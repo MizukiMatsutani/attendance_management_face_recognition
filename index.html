@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>
+    <video id="player" controls autoplay></video>
+    <button id="go_to_work">出勤</button>
+    <button id="go_home">退勤</button>
+    <canvas id="snapshot" width="320" height="240"></canvas>
+    <button id="store">保存</button>
+    <input type="text" id="store_name" value="" />
+
+    <script>
+      const player = document.getElementById("player");
+      const snapshotCanvas = document.getElementById("snapshot");
+      const goToWorkButton = document.getElementById("go_to_work");
+      const goHomeButton = document.getElementById("go_home");
+      const storeButton = document.getElementById("store");
+
+      const handleSuccess = function(stream) {
+        // Attach the video stream to the video element and autoplay.
+        player.srcObject = stream;
+      };
+
+      const postApi = function() {
+        const file = snapshotCanvas.toDataURL("image/png");
+        // const fData = new FormData();
+        // fData.append('file', file);
+
+        data = {
+          file: file.replace(/^.*,/, "")
+        };
+
+        // This will upload the file after having read it
+        const upload = file => {
+          fetch("/api/upload", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(data)
+          })
+            .then(response => response.json())
+            .then(
+              success => console.log(success) // Handle the success response object
+            )
+            .catch(
+              error => console.log(error) // Handle the error response object
+            );
+        };
+
+        upload();
+      };
+
+      const draw = () => {
+        const context = snapshot.getContext("2d");
+        // Draw the video frame to the canvas.
+        context.drawImage(
+          player,
+          0,
+          0,
+          snapshotCanvas.width,
+          snapshotCanvas.height
+        );
+      };
+
+      goToWorkButton.addEventListener("click", function() {
+        draw();
+      });
+      goHomeButton.addEventListener("click", function() {
+        draw();
+        postApi();
+      });
+
+      storeButton.addEventListener("click", function() {
+        storeApi();
+      });
+
+      const storeApi = function() {
+        draw();
+        const file = snapshotCanvas.toDataURL("image/png");
+        const storeNameText = document.getElementById("store_name");
+
+        const storeData = {
+          file: file.replace(/^.*,/, ""),
+          user_name: storeNameText.value
+        };
+
+        const store = storeData => {
+          fetch("/api/store", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(storeData)
+          })
+            .then(response => response.json())
+            .then(
+              success => console.log(success) // Handle the success response object
+            )
+            .catch(
+              error => console.log(error) // Handle the error response object
+            );
+        };
+
+        if (storeNameText.value == "") {
+          alert("テキスト入れてね");
+          return;
+        }
+        store(storeData);
+      };
+
+      navigator.mediaDevices.getUserMedia({ video: true }).then(handleSuccess);
+    </script>
+  </body>
+</html>
