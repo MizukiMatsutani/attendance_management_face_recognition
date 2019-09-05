@@ -1,13 +1,128 @@
 <!DOCTYPE html>
 <html>
-  <head></head>
+  <head>
+    <style>
+      .button {
+        display: inline-block;
+        width: 250px;
+        text-align: center;
+        border: 2px solid #9ec34b;
+        font-size: 16px;
+        color: #9ec34b;
+        text-decoration: none;
+        font-weight: bold;
+        padding: 8px 16px;
+        border-radius: 4px;
+        transition: 0.4s;
+      }
+      input {
+        border: 2px solid #9ec34b;
+        font-size: 16px;
+        padding: 8px 16px;
+        border-radius: 4px;
+        transition: 0.4s;
+        text-align: left;
+      }
+
+      .v:hover {
+        background-color: #9ec34b;
+        border-color: #cbe585;
+        color: #fff;
+      }
+      .box {
+        display: flex;
+        flex-direction: row;
+      }
+      .main-box {
+        justify-content: center;
+        align-items: flex-end;
+      }
+      #snapshot {
+        padding: 20px;
+      }
+      .operation-box {
+        width: 600px;
+        margin: 20px auto;
+        justify-content: space-between;
+        align-items: center;
+      }
+      #time {
+        text-align: center;
+        font-size: 2em;
+      }
+
+      .grid {
+        display: grid;
+        grid-template:
+          "text button"
+          / auto auto;
+
+        justify-content: center;
+        grid-column-gap: 10px;
+      }
+      #store {
+        grid-area: button;
+        width: 200px;
+      }
+      #store_name {
+        grid-area: text;
+      }
+
+      .custom-toast {
+        top: 15%;
+        right: 12px;
+        /* width: 100%; */
+      }
+    </style>
+
+    <script src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/css/toastr.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/js/toastr.min.js"></script>
+    <script type="text/javascript">
+      $(document).ready(function() {
+        toastr.options.timeOut = 3000; // 3秒
+        toastr.options = {
+          closeButton: true,
+          debug: false,
+          newestOnTop: false,
+          progressBar: true,
+          positionClass: "custom-toast",
+          preventDuplicates: false,
+          showDuration: "300",
+          hideDuration: "1000",
+          timeOut: "5000",
+          extendedTimeOut: "1000",
+          showEasing: "swing",
+          hideEasing: "linear",
+          showMethod: "fadeIn",
+          hideMethod: "fadeOut"
+        };
+      });
+    </script>
+  </head>
   <body>
-    <video id="player" controls autoplay></video>
-    <button id="go_to_work">出勤</button>
-    <button id="go_home">退勤</button>
-    <canvas id="snapshot" width="320" height="240"></canvas>
-    <button id="store">保存</button>
-    <input type="text" id="store_name" value="" />
+    <p id="time"></p>
+    <div class="main-box box">
+      <video id="player" controls autoplay></video>
+      <canvas id="snapshot" width="320" height="240"></canvas>
+    </div>
+    <div class="operation-box box">
+      <button id="go_to_work" class="button">出勤</button>
+      <button id="go_home" class="button">退勤</button>
+    </div>
+
+    <div class="grid">
+      <input
+        type="text"
+        id="store_name"
+        value=""
+        placeholder="名前を入れてね"
+      />
+      <button id="store" class="button">顔を覚える</button>
+    </div>
 
     <script>
       const player = document.getElementById("player");
@@ -21,35 +136,84 @@
         player.srcObject = stream;
       };
 
-      const postApi = function() {
-        const file = snapshotCanvas.toDataURL("image/png");
-        // const fData = new FormData();
-        // fData.append('file', file);
+      const messageDisp = (isGoHome, name) => {
+        if (name === "Unknown") {
+          toastr.error("侵入者がきました！");
+          return false;
+        }
 
-        data = {
-          file: file.replace(/^.*,/, "")
-        };
+        if (isGoHome) {
+          toastr.success("お疲れ様です！また明日！", name + "さん");
+        } else {
+          toastr.success("おはようございます！", name + "さん");
+        }
+      };
 
-        // This will upload the file after having read it
-        const upload = file => {
-          fetch("/api/upload", {
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(data)
+      const errorDisp = error => {
+        console.log(error);
+        toastr.error("ERROR!!");
+      };
+
+      const upload = (data, isGoHome) => {
+        fetch("/api/upload", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(data)
+        })
+          .then(response => response.json())
+          .then(success => {
+            console.log(success);
+            messageDisp(isGoHome, success.name);
           })
-            .then(response => response.json())
-            .then(
-              success => console.log(success) // Handle the success response object
-            )
-            .catch(
-              error => console.log(error) // Handle the error response object
-            );
+          .catch(errorDisp);
+      };
+
+      const store = storeData => {
+        fetch("/api/store", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(storeData)
+        })
+          .then(response => response.json())
+          .then(success => {
+            console.log(success);
+
+            toastr.success(success.name + "として登録しました！");
+          })
+          .catch(errorDisp);
+      };
+
+      const postApi = isGoHome => {
+        const file = snapshotCanvas.toDataURL("image/png");
+        const data = {
+          file: file.replace(/^.*,/, ""),
+          is_go_home: isGoHome
         };
 
-        upload();
+        upload(data, isGoHome);
+      };
+
+      const storeApi = function() {
+        draw();
+        const file = snapshotCanvas.toDataURL("image/png");
+        const storeNameText = document.getElementById("store_name");
+
+        const storeData = {
+          file: file.replace(/^.*,/, ""),
+          user_name: storeNameText.value
+        };
+
+        if (storeNameText.value == "") {
+          toastr.warning("名前を入れてね！");
+          return;
+        }
+        store(storeData);
       };
 
       const draw = () => {
@@ -66,52 +230,24 @@
 
       goToWorkButton.addEventListener("click", function() {
         draw();
+        postApi(false);
       });
       goHomeButton.addEventListener("click", function() {
         draw();
-        postApi();
+        postApi(true);
       });
-
       storeButton.addEventListener("click", function() {
         storeApi();
       });
 
-      const storeApi = function() {
-        draw();
-        const file = snapshotCanvas.toDataURL("image/png");
-        const storeNameText = document.getElementById("store_name");
-
-        const storeData = {
-          file: file.replace(/^.*,/, ""),
-          user_name: storeNameText.value
-        };
-
-        const store = storeData => {
-          fetch("/api/store", {
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(storeData)
-          })
-            .then(response => response.json())
-            .then(
-              success => console.log(success) // Handle the success response object
-            )
-            .catch(
-              error => console.log(error) // Handle the error response object
-            );
-        };
-
-        if (storeNameText.value == "") {
-          alert("テキスト入れてね");
-          return;
-        }
-        store(storeData);
-      };
-
       navigator.mediaDevices.getUserMedia({ video: true }).then(handleSuccess);
+
+      time();
+      function time() {
+        var now = new Date();
+        document.getElementById("time").innerHTML = now.toLocaleTimeString();
+      }
+      setInterval("time()", 1000);
     </script>
   </body>
 </html>

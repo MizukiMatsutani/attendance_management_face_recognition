@@ -25,24 +25,35 @@ from io import BytesIO
 import cv2
 import random, string
 import os
+from os.path import join, dirname
+from dotenv import load_dotenv
 import json
-
-# You can change this to any folder on your system
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+import requests
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
+   
+##
+# base64から画像ストリームを取得
+##
 def decode_image(enc_image):
     dec_data = base64.b64decode(enc_image)
     dec_img= np.frombuffer(dec_data,dtype=np.uint8)
     
     return cv2.imdecode(dec_img, cv2.IMREAD_COLOR)
 
+##
+# envファイルからデータ読み出し
+##
+def load_env(key):
+    dotenv_path = join(dirname(__file__), '.env')
+    load_dotenv(dotenv_path)
+
+    return os.environ.get(key)
+
+##
+# ランダムな文字列を取得
+##
 def randomname(n):
    return ''.join(random.choices(string.ascii_letters + string.digits, k=n))
 
@@ -55,23 +66,41 @@ def index():
 
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
+    is_go_home = request.get_json()['is_go_home']
     enc_data  = request.get_json()['file']
     img = decode_image(enc_data)
-    # dec_img = Image.open(BytesIO(dec_data))
-
+    
     cv2.imwrite(r"images/target.png",img)
 
     if enc_data == "":
         return jsonify({"error": 422})
 
-    name = detect_faces_in_image(r"images/target.png")
+    name = detect_faces_in_image(r"images/target.png", is_go_home)
 
     return jsonify({"name": name})
+
+@app.route('/api/store', methods=['POST'])
+def api_store():
+    user_name = request.get_json()['user_name']
+    enc_data  = request.get_json()['file']
+    img = decode_image(enc_data)
+
+    file_name = randomname(10)
+    dirname = 'images'
+    if not os.path.exists(dirname):
+        os.mkdir(dirname)
+
+    full_file_name = os.path.join(dirname, file_name + ".png")
+    cv2.imwrite(full_file_name, img)
+
+    remake_face_encode_json(full_file_name, user_name)
+
+    return jsonify({"name": user_name})
 
 ##
 # 解析
 ##
-def detect_faces_in_image(file_stream):
+def detect_faces_in_image(file_stream, is_go_home):
     # 学習データ取得
     known_faces = get_known_face()
     known_face_encodings = known_faces[0]
@@ -85,16 +114,16 @@ def detect_faces_in_image(file_stream):
 
     if len(unknown_face_encodings) > 0:
         face_encoding = unknown_face_encodings[0]
-        ## TODO: なぜかJSONの一人目しか判定してくれない・・・
         match_results = face_recognition.compare_faces(known_face_encodings, face_encoding)
-        if match_results[0]:
-            # return known_face_names[1]
+
+        if True in match_results:
             # 名前取得
             face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
             best_match_index = np.argmin(face_distances)
 
             if match_results[best_match_index]:
                 name = known_face_names[best_match_index]
+                notification_to_slack(name, is_go_home)
 
     return name
 
@@ -117,25 +146,9 @@ def get_known_face():
 
     return [known_face_encodings, known_face_names]
 
-@app.route('/api/store', methods=['POST'])
-def api_store():
-    user_name = request.get_json()['user_name']
-    enc_data  = request.get_json()['file']
-    img = decode_image(enc_data)
-
-    file_name = randomname(10)
-    dirname = 'images'
-    if not os.path.exists(dirname):
-        os.mkdir(dirname)
-
-    full_file_name = os.path.join(dirname, file_name + ".png")
-    cv2.imwrite(full_file_name, img)
-
-    remake_face_encode_json(full_file_name, user_name)
-
-    return jsonify({"user_name": user_name})
-
-## 判定用のjson再作成
+##
+# 判定用のjson再作成
+##
 def remake_face_encode_json(file_name, user_name):
     json_path = "encoded_images.json"
 
@@ -154,11 +167,25 @@ def remake_face_encode_json(file_name, user_name):
     enc_image = face_recognition.load_image_file(file_name)
     face_encoding = face_recognition.face_encodings(enc_image)[0]
     encode.append([user_name, face_encoding.tolist()])
-
-    # jsons.append([user_name, "aaaaaaa"])
     
     with open(json_path, 'w', encoding="UTF-8") as fw:
         json.dump(encode, fw, indent=4)
+
+##
+# Slack通知
+##
+def notification_to_slack(name, is_go_home):
+    url = load_env('SLACK_URL')
+    text = name + "さんが出勤しました！おはようございます！"
+    if is_go_home:
+        text = name + "さんが帰りました！また明日！お疲れ様！"
+
+    requests.post(url, data = json.dumps({
+        'text': u'@here ' + text,
+        'username': u'顔認証勤怠アプリ',
+        'icon_emoji': u':smile_cat:',
+        'link_names': 1,
+    }))
 
 if __name__ == "__main__":
     app.run(host='127.0.0.1', port=5001, debug=True)
