@@ -125,6 +125,9 @@ def detect_faces_in_image(file_stream, is_go_home):
                 name = known_face_names[best_match_index]
                 notification_to_slack(name, is_go_home)
 
+    if name == "Unknown":
+        post_slack('侵入者がきました！備えてください！', u':skull:')
+
     return name
 
 ##
@@ -175,15 +178,18 @@ def remake_face_encode_json(file_name, user_name):
 # Slack通知
 ##
 def notification_to_slack(name, is_go_home):
-    url = load_env('SLACK_URL')
     text = name + "さんが出勤しました！おはようございます！"
     if is_go_home:
         text = name + "さんが帰りました！また明日！お疲れ様！"
 
+    post_slack(text, u':smile_cat:')
+
+def post_slack(text, icon):
+    url = load_env('SLACK_URL')
     requests.post(url, data = json.dumps({
         'text': u'@here ' + text,
         'username': u'顔認証勤怠アプリ',
-        'icon_emoji': u':smile_cat:',
+        'icon_emoji': icon,
         'link_names': 1,
     }))
 
